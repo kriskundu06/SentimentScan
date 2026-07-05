@@ -3,6 +3,26 @@ import pandas as pd
 from transformers import pipeline
 import plotly.express as px
 
+TEXT_COLUMN_ALIASES = (
+    "review_text",
+    "review",
+    "text",
+    "tweet_text",
+    "full_text",
+    "content",
+    "comment",
+    "message",
+)
+
+
+def find_text_column(columns):
+    normalized_columns = {str(column).strip().lower(): column for column in columns}
+    return next(
+        (normalized_columns[alias] for alias in TEXT_COLUMN_ALIASES if alias in normalized_columns),
+        None,
+    )
+
+
 st.set_page_config(
     page_title="Sentiment Analysis Tool based on AI",
     layout = 'wide',
@@ -78,6 +98,7 @@ with tab1:
 #tab2
 with tab2:
     st.header("Analyze the Dataset(CSV)") 
+    st.caption("Accepted text columns: review_text, review, text, tweet_text, full_text, content, comment, or message.")
     uploaded_file = st.file_uploader("Upload your CSV file with customer sentiment", type = ["csv"])
     if uploaded_file is not None:
         #reading the csv file
@@ -85,13 +106,20 @@ with tab2:
         st.write("Preview of the uploaded dataset:")
         st.dataframe(df.head())
 
-        #check if 'review' column exists in the dataset upload
-        text_column = "review_text"
+        #check if a supported text column exists in the dataset upload
+        text_column = find_text_column(df.columns)
         if text_column in df.columns:
             if st.button("Analyze the entire dataset"):
                 st.write("Analyzing .. this might take few moments, please be patient")    
 
                 #apply the model to the text column to analyze
+                df = df.copy()
+                df[text_column] = df[text_column].fillna("").astype(str).str.strip()
+                df = df[df[text_column] != ""]
+                if df.empty:
+                    st.error(f"Column '{text_column}' has no usable text rows.")
+                    st.stop()
+
                 df["AI_sentiment"] = df[text_column].apply(lambda x: sentiment_pipeline(str(x))[0]["label"])
                 #display the results
                 st.write(" ### Analysis Completed!")
@@ -116,8 +144,9 @@ with tab2:
                     mime = "text/csv"
                 )
 
-            else:
-                st.error(f"Could not find the column '{text_column}' in the uploaded dataset. Please make sure your CSV file contains a column named '{text_column}' with the text data to analyze.")  
+        else:
+            aliases = ", ".join(TEXT_COLUMN_ALIASES)
+            st.error(f"Could not find a supported text column. Please include one of: {aliases}.")
 
 with st.expander("About DistilBERT"):
     st.write("""
